@@ -10,6 +10,7 @@ import android.location.LocationListener
 import android.location.LocationManager
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.ActivityCompat
@@ -47,6 +48,21 @@ class MetroTrackingService : Service() {
         override fun onStatusChanged(provider: String?, status: Int, extras: Bundle?) {}
         override fun onProviderEnabled(provider: String) {}
         override fun onProviderDisabled(provider: String) {}
+    }
+
+    /**
+     * Keeps progress moving between real fixes by interpolating on elapsed time — real fixes
+     * underground (weak/absent GPS/BeiDou signal) can be sparse, delayed, or never arrive until
+     * the train reaches a station with signal, which otherwise leaves the UI static for the
+     * whole ride. See [TrackingStateHolder.tick].
+     */
+    private val tickHandler = Handler(Looper.getMainLooper())
+    private val tickRunnable = object : Runnable {
+        override fun run() {
+            TrackingStateHolder.tick()
+            postNotification()
+            tickHandler.postDelayed(this, TICK_INTERVAL_MILLIS)
+        }
     }
 
     private fun handleLocation(location: Location) {
@@ -120,6 +136,7 @@ class MetroTrackingService : Service() {
         isNearIntervalActive = false
         useMostRecentLastKnownLocation()
         requestLocationUpdates()
+        tickHandler.postDelayed(tickRunnable, TICK_INTERVAL_MILLIS)
     }
 
     /**
@@ -193,6 +210,7 @@ class MetroTrackingService : Service() {
     }
 
     private fun stopLocationUpdatesIfNeeded() {
+        tickHandler.removeCallbacks(tickRunnable)
         if (!isRequestingLocation) return
         locationManager.removeUpdates(locationListener)
         isRequestingLocation = false
@@ -217,5 +235,8 @@ class MetroTrackingService : Service() {
 
         /** Distance to the next station at which we switch from the far to the near interval. */
         private const val NEAR_DISTANCE_THRESHOLD_METERS = 350
+
+        /** How often to interpolate/republish progress between real fixes. */
+        private const val TICK_INTERVAL_MILLIS = 2_000L
     }
 }

@@ -1,5 +1,6 @@
 package com.shmetro.liveupdates.location
 
+import android.os.SystemClock
 import com.shmetro.liveupdates.data.MetroLine
 import com.shmetro.liveupdates.data.Station
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,6 +15,18 @@ const val DIRECTION_HYSTERESIS = 0.03
 
 /** Distance to the next station at or below which we consider the train to have arrived. */
 const val ARRIVAL_THRESHOLD_METERS = 150.0
+
+/**
+ * Assumed average speed used to interpolate progress between real fixes (e.g. underground,
+ * where GPS/BeiDou fixes can be sparse, delayed or entirely absent). There's no per-segment
+ * schedule data to calibrate against, so this is a single rough constant — enough to animate
+ * progress smoothly rather than have it jump only when a real fix lands.
+ */
+private const val ASSUMED_SPEED_METERS_PER_SECOND = 11.0
+
+/** Cap on how far [TrackingStateHolder.tick] will interpolate a segment: never claim arrival
+ *  from elapsed time alone — that's left to a real fix (or the distance-based [ARRIVAL_THRESHOLD_METERS] check). */
+private const val MAX_TIME_INTERPOLATED_FRACTION = 0.95
 
 data class TrackingState(
     val isTracking: Boolean = false,
@@ -39,10 +52,26 @@ object TrackingStateHolder {
     private var lastProgress: Double? = null
     private var lastDirectionForward: Boolean = true
 
+    /**
+     * Anchors the time-based interpolation [tick] does between real fixes: "as of
+     * [anchorElapsedRealtimeMillis], we were [anchorFraction] of the way across a
+     * [segmentMeters]-long segment". Re-anchored to the latest real fix on every [update], and
+     * to a fresh (0-progress) segment whenever [segmentIndex] changes.
+     */
+    private data class SegmentAnchor(
+        val lineId: String,
+        val segmentIndex: Int,
+        val anchorElapsedRealtimeMillis: Long,
+        val anchorFraction: Double,
+        val segmentMeters: Double,
+    )
+    private var segmentAnchor: SegmentAnchor? = null
+
     fun reset() {
         lastLineId = null
         lastProgress = null
         lastDirectionForward = true
+        segmentAnchor = null
         _state.value = TrackingState()
     }
 
@@ -93,6 +122,14 @@ object TrackingStateHolder {
             else -> segLine * result.segmentFraction
         }
 
+        segmentAnchor = SegmentAnchor(
+            lineId = line.id,
+            segmentIndex = result.segmentIndex,
+            anchorElapsedRealtimeMillis = SystemClock.elapsedRealtime(),
+            anchorFraction = fractionTowardNext,
+            segmentMeters = segLine,
+        )
+
         _state.value = _state.value.copy(
             isTracking = true,
             currentLine = line,
@@ -103,6 +140,34 @@ object TrackingStateHolder {
             distanceToNextMeters = distanceToNext.toInt(),
             offLine = result.perpendicularDistanceMeters > OFF_LINE_THRESHOLD_METERS,
             arriving = distanceToNext <= ARRIVAL_THRESHOLD_METERS,
+        )
+    }
+
+    /**
+     * Advances [TrackingState.segmentProgressPercent]/[TrackingState.distanceToNextMeters] by
+     * elapsed time since the last real fix, assuming [ASSUMED_SPEED_METERS_PER_SECOND]. Meant to
+     * be called on a short timer while tracking so the UI keeps moving between fixes instead of
+     * only jumping when one arrives — the common case underground, where satellite fixes are
+     * sparse or delayed. Never overwrites a fix-derived state with something less advanced than
+     * it, and never claims arrival by itself (capped at [MAX_TIME_INTERPOLATED_FRACTION]).
+     */
+    fun tick() {
+        val anchor = segmentAnchor ?: return
+        val current = _state.value
+        if (!current.isTracking || current.currentStation == null || current.nextStation == null) return
+        if (anchor.segmentMeters <= 0.0) return
+
+        val elapsedSeconds = (SystemClock.elapsedRealtime() - anchor.anchorElapsedRealtimeMillis) / 1000.0
+        if (elapsedSeconds <= 0.0) return
+
+        val extraFraction = (ASSUMED_SPEED_METERS_PER_SECOND * elapsedSeconds) / anchor.segmentMeters
+        val interpolatedFraction = (anchor.anchorFraction + extraFraction).coerceIn(0.0, MAX_TIME_INTERPOLATED_FRACTION)
+        if (interpolatedFraction <= anchor.anchorFraction) return
+
+        val interpolatedDistance = anchor.segmentMeters * (1.0 - interpolatedFraction)
+        _state.value = current.copy(
+            segmentProgressPercent = (interpolatedFraction * 100).toInt().coerceIn(0, 100),
+            distanceToNextMeters = interpolatedDistance.toInt().coerceAtLeast(0),
         )
     }
 }
