@@ -345,9 +345,8 @@ private fun CurrentNextCard(state: TrackingState) {
 /**
  * Debug-only affordance for testing station matching without real GPS or a location-mocking
  * app: feeds a hand-entered lat/lng straight into the same [StationLocator]/[TrackingStateHolder]
- * path the tracking service uses, so a fake location app or Xposed-style hook — which only
- * intercepts calls inside this app's own process and never reaches the FusedLocationProviderClient
- * running in Google Play Services — isn't needed at all.
+ * path the tracking service uses, so a fake location app or Xposed-style in-process hook isn't
+ * needed at all.
  */
 @Composable
 private fun DebugLocationOverrideCard() {
