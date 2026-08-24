@@ -13,6 +13,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,7 +24,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
@@ -34,10 +38,12 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -61,14 +67,16 @@ import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.FloatingToolbar
+import top.yukonga.miuix.kmp.basic.FloatingToolbarDefaults
+import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
-import top.yukonga.miuix.kmp.basic.NavigationBar
-import top.yukonga.miuix.kmp.basic.NavigationBarItem
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
+import top.yukonga.miuix.kmp.basic.ToolbarPosition
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.blur.BlendColorEntry
 import top.yukonga.miuix.kmp.blur.BlurDefaults
@@ -105,6 +113,13 @@ private enum class AppTab(val label: String) {
     Simulate("模拟乘车"),
     Settings("设置"),
 }
+
+/**
+ * Space reserved at the bottom of each tab's scroll content for the floating pill nav bar, which
+ * (unlike a docked [top.yukonga.miuix.kmp.basic.NavigationBar]) overlays content instead of
+ * pushing it up, so Scaffold's own content padding doesn't account for it.
+ */
+private val FLOATING_NAV_RESERVED_HEIGHT = 88.dp
 
 @Composable
 private fun MetroApp() {
@@ -151,37 +166,41 @@ private fun MetroApp() {
 
     Scaffold(
         topBar = { TopAppBar(title = selectedTab.label) },
-        bottomBar = {
-            Box(
+        floatingToolbar = {
+            FloatingToolbar(
                 modifier = if (blurActive) {
                     Modifier.textureBlur(
                         backdrop = backdrop,
-                        shape = RectangleShape,
+                        shape = RoundedCornerShape(FloatingToolbarDefaults.CornerRadius),
                         blurRadius = 25f,
                         colors = BlurDefaults.blurColors(
                             blendColors = listOf(
-                                BlendColorEntry(color = MiuixTheme.colorScheme.surface.copy(alpha = 0.65f)),
+                                BlendColorEntry(color = MiuixTheme.colorScheme.surface.copy(alpha = 0.55f)),
                             ),
                         ),
                     )
                 } else {
                     Modifier
                 },
+                color = if (blurActive) Color.Transparent else FloatingToolbarDefaults.defaultColor(),
             ) {
-                NavigationBar(color = if (blurActive) Color.Transparent else MiuixTheme.colorScheme.surface) {
-                    NavigationBarItem(
+                Row(
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    FloatingTabItem(
                         selected = selectedTab == AppTab.Live,
                         onClick = { selectedTab = AppTab.Live },
                         icon = MiuixIcons.Location,
                         label = AppTab.Live.label,
                     )
-                    NavigationBarItem(
+                    FloatingTabItem(
                         selected = selectedTab == AppTab.Simulate,
                         onClick = { selectedTab = AppTab.Simulate },
                         icon = MiuixIcons.Play,
                         label = AppTab.Simulate.label,
                     )
-                    NavigationBarItem(
+                    FloatingTabItem(
                         selected = selectedTab == AppTab.Settings,
                         onClick = { selectedTab = AppTab.Settings },
                         icon = MiuixIcons.Settings,
@@ -190,17 +209,19 @@ private fun MetroApp() {
                 }
             }
         },
+        floatingToolbarPosition = ToolbarPosition.BottomCenter,
     ) { padding ->
-        // Deliberately not applying the bottom inset here: content needs to extend full-height,
-        // underneath the (semi-transparent) bar, for there to be anything for it to blur. Each
-        // tab instead reserves that space as trailing padding inside its own scroll content.
+        // The floating toolbar overlays content rather than reserving Scaffold-tracked space
+        // (that's what makes it "float"), so `padding` here only carries the top bar height and
+        // system insets — each tab reserves FLOATING_NAV_RESERVED_HEIGHT itself as trailing
+        // padding so its last item isn't left sitting underneath the pill.
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(top = padding.calculateTopPadding())
                 .then(if (blurActive) Modifier.layerBackdrop(backdrop) else Modifier),
         ) {
-            val bottomInset = padding.calculateBottomPadding()
+            val bottomInset = padding.calculateBottomPadding() + FLOATING_NAV_RESERVED_HEIGHT
             when (selectedTab) {
                 AppTab.Live -> LiveTrackingContent(
                     state = trackingState,
@@ -234,6 +255,32 @@ private fun MetroApp() {
         hasNotificationPermission = hasNotificationPermission(context)
         promotedNotificationsEnabled = canPostPromotedNotifications(context)
         onPauseOrDispose { }
+    }
+}
+
+/** A single tab in the floating pill nav bar — fixed-width, unlike [top.yukonga.miuix.kmp.basic.NavigationBarItem] which needs a full-width RowScope to distribute weight against. */
+@Composable
+private fun FloatingTabItem(selected: Boolean, onClick: () -> Unit, icon: ImageVector, label: String) {
+    val tint = if (selected) {
+        MiuixTheme.colorScheme.onSurfaceContainer
+    } else {
+        MiuixTheme.colorScheme.onSurfaceVariantActions
+    }
+    Column(
+        modifier = Modifier
+            .width(64.dp)
+            .clickable(onClick = onClick, role = Role.Tab)
+            .padding(vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(imageVector = icon, contentDescription = label, tint = tint, modifier = Modifier.size(24.dp))
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = label,
+            fontSize = 11.sp,
+            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+            color = tint,
+        )
     }
 }
 
