@@ -662,8 +662,9 @@ private fun SettingsContent(
         SmallTitle(text = "关于")
         BasicComponent(
             title = "支持的线路",
-            summary = "1-13、16、17 号线及浦江线，通过手机定位自动识别最近的线路与站点；" +
-                "14、15、18 等更新的线路暂未收录。站点坐标为近似值，越靠郊区的站点误差可能越大。",
+            summary = "1-18 号线及浦江线，通过手机定位自动识别最近的线路与站点；数据来自 OpenStreetMap。" +
+                "部分有分支或环形的线路（9、10、11、4 号线）仅收录其中一段代表性走向。" +
+                "站点坐标为近似值，越靠郊区的站点误差可能越大。",
         )
         BasicComponent(
             title = "版本",
