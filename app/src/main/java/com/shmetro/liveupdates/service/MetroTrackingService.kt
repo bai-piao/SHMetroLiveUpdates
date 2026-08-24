@@ -176,7 +176,7 @@ class MetroTrackingService : Service() {
     }
 
     private fun activeProviders(): List<String> =
-        listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER)
+        listOf(LocationManager.GPS_PROVIDER, LocationManager.NETWORK_PROVIDER, LocationManager.PASSIVE_PROVIDER)
             .filter { provider ->
                 try {
                     locationManager.isProviderEnabled(provider)
@@ -194,10 +194,15 @@ class MetroTrackingService : Service() {
         val minTimeMillis = if (isNearIntervalActive) NEAR_UPDATE_INTERVAL_MILLIS else FAR_UPDATE_INTERVAL_MILLIS
         val providers = activeProviders()
         for (provider in providers) {
+            // PASSIVE_PROVIDER costs nothing extra to listen on — it only delivers fixes some
+            // other app/service already requested (e.g. a map app open at the same time, which
+            // may have indoor/underground coverage this service's own GPS+network requests
+            // don't) — so there's no reason to throttle it the way the active providers are.
+            val minTime = if (provider == LocationManager.PASSIVE_PROVIDER) 0L else minTimeMillis
             try {
                 locationManager.requestLocationUpdates(
                     provider,
-                    minTimeMillis,
+                    minTime,
                     0f,
                     locationListener,
                     Looper.getMainLooper(),
