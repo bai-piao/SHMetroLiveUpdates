@@ -44,6 +44,8 @@ dependencies {
     implementation("androidx.compose.foundation:foundation")
 
     implementation("top.yukonga.miuix.kmp:miuix-ui:0.9.3")
+    implementation("top.yukonga.miuix.kmp:miuix-preference:0.9.3")
+    implementation("top.yukonga.miuix.kmp:miuix-icons:0.9.3")
 
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.11.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
