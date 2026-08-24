@@ -1,0 +1,16 @@
+<resources>
+    <string name="app_name">上海地铁实时</string>
+
+    <string name="notification_channel_name">地铁实时更新</string>
+    <string name="notification_channel_description">显示当前站与下一站信息</string>
+
+    <string name="notification_title_bound_for">%1$s · 开往%2$s</string>
+    <string name="notification_title_arriving">%1$s · %2$s站到了</string>
+    <string name="notification_title_locating">%1$s · 定位中</string>
+    <string name="notification_body">当前 %1$s → 下一站 %2$s</string>
+    <string name="notification_body_with_distance">当前 %1$s → 下一站 %2$s（约 %3$d 米）</string>
+    <string name="notification_body_arriving">%1$s站到了</string>
+    <string name="notification_body_locating">正在匹配最近的站点…</string>
+
+    <string name="action_stop_tracking">停止追踪</string>
+</resources>
