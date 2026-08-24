@@ -13,7 +13,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.basicMarquee
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,8 +23,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.input.rememberTextFieldState
@@ -38,12 +35,9 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -67,20 +61,20 @@ import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Button
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.FloatingToolbar
+import top.yukonga.miuix.kmp.basic.FloatingNavigationBar
+import top.yukonga.miuix.kmp.basic.FloatingNavigationBarItem
 import top.yukonga.miuix.kmp.basic.FloatingToolbarDefaults
-import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.SmallTitle
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
-import top.yukonga.miuix.kmp.basic.ToolbarPosition
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.blur.BlendColorEntry
 import top.yukonga.miuix.kmp.blur.BlurDefaults
 import top.yukonga.miuix.kmp.blur.LayerBackdrop
+import top.yukonga.miuix.kmp.blur.highlight.Highlight
 import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
 import top.yukonga.miuix.kmp.blur.layerBackdrop
 import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
@@ -113,13 +107,6 @@ private enum class AppTab(val label: String) {
     Simulate("模拟乘车"),
     Settings("设置"),
 }
-
-/**
- * Space reserved at the bottom of each tab's scroll content for the floating pill nav bar, which
- * (unlike a docked [top.yukonga.miuix.kmp.basic.NavigationBar]) overlays content instead of
- * pushing it up, so Scaffold's own content padding doesn't account for it.
- */
-private val FLOATING_NAV_RESERVED_HEIGHT = 88.dp
 
 @Composable
 private fun MetroApp() {
@@ -164,10 +151,12 @@ private fun MetroApp() {
     }
     val blurActive = backdrop != null
 
+    val isDark = isSystemInDarkTheme()
+
     Scaffold(
         topBar = { TopAppBar(title = selectedTab.label) },
-        floatingToolbar = {
-            FloatingToolbar(
+        bottomBar = {
+            FloatingNavigationBar(
                 modifier = if (blurActive) {
                     Modifier.textureBlur(
                         backdrop = backdrop,
@@ -175,53 +164,44 @@ private fun MetroApp() {
                         blurRadius = 25f,
                         colors = BlurDefaults.blurColors(
                             blendColors = listOf(
-                                BlendColorEntry(color = MiuixTheme.colorScheme.surface.copy(alpha = 0.55f)),
+                                BlendColorEntry(color = MiuixTheme.colorScheme.surfaceContainer.copy(alpha = 0.6f)),
                             ),
                         ),
+                        highlight = if (isDark) Highlight.GlassStrokeMiddleDark else Highlight.GlassStrokeMiddleLight,
                     )
                 } else {
                     Modifier
                 },
-                color = if (blurActive) Color.Transparent else FloatingToolbarDefaults.defaultColor(),
+                color = if (blurActive) Color.Transparent else MiuixTheme.colorScheme.surfaceContainer,
             ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    FloatingTabItem(
-                        selected = selectedTab == AppTab.Live,
-                        onClick = { selectedTab = AppTab.Live },
-                        icon = MiuixIcons.Location,
-                        label = AppTab.Live.label,
-                    )
-                    FloatingTabItem(
-                        selected = selectedTab == AppTab.Simulate,
-                        onClick = { selectedTab = AppTab.Simulate },
-                        icon = MiuixIcons.Play,
-                        label = AppTab.Simulate.label,
-                    )
-                    FloatingTabItem(
-                        selected = selectedTab == AppTab.Settings,
-                        onClick = { selectedTab = AppTab.Settings },
-                        icon = MiuixIcons.Settings,
-                        label = AppTab.Settings.label,
-                    )
-                }
+                FloatingNavigationBarItem(
+                    selected = selectedTab == AppTab.Live,
+                    onClick = { selectedTab = AppTab.Live },
+                    icon = MiuixIcons.Location,
+                    label = AppTab.Live.label,
+                )
+                FloatingNavigationBarItem(
+                    selected = selectedTab == AppTab.Simulate,
+                    onClick = { selectedTab = AppTab.Simulate },
+                    icon = MiuixIcons.Play,
+                    label = AppTab.Simulate.label,
+                )
+                FloatingNavigationBarItem(
+                    selected = selectedTab == AppTab.Settings,
+                    onClick = { selectedTab = AppTab.Settings },
+                    icon = MiuixIcons.Settings,
+                    label = AppTab.Settings.label,
+                )
             }
         },
-        floatingToolbarPosition = ToolbarPosition.BottomCenter,
     ) { padding ->
-        // The floating toolbar overlays content rather than reserving Scaffold-tracked space
-        // (that's what makes it "float"), so `padding` here only carries the top bar height and
-        // system insets — each tab reserves FLOATING_NAV_RESERVED_HEIGHT itself as trailing
-        // padding so its last item isn't left sitting underneath the pill.
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(top = padding.calculateTopPadding())
                 .then(if (blurActive) Modifier.layerBackdrop(backdrop) else Modifier),
         ) {
-            val bottomInset = padding.calculateBottomPadding() + FLOATING_NAV_RESERVED_HEIGHT
+            val bottomInset = padding.calculateBottomPadding()
             when (selectedTab) {
                 AppTab.Live -> LiveTrackingContent(
                     state = trackingState,
@@ -255,32 +235,6 @@ private fun MetroApp() {
         hasNotificationPermission = hasNotificationPermission(context)
         promotedNotificationsEnabled = canPostPromotedNotifications(context)
         onPauseOrDispose { }
-    }
-}
-
-/** A single tab in the floating pill nav bar — fixed-width, unlike [top.yukonga.miuix.kmp.basic.NavigationBarItem] which needs a full-width RowScope to distribute weight against. */
-@Composable
-private fun FloatingTabItem(selected: Boolean, onClick: () -> Unit, icon: ImageVector, label: String) {
-    val tint = if (selected) {
-        MiuixTheme.colorScheme.onSurfaceContainer
-    } else {
-        MiuixTheme.colorScheme.onSurfaceVariantActions
-    }
-    Column(
-        modifier = Modifier
-            .width(64.dp)
-            .clickable(onClick = onClick, role = Role.Tab)
-            .padding(vertical = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Icon(imageVector = icon, contentDescription = label, tint = tint, modifier = Modifier.size(24.dp))
-        Spacer(modifier = Modifier.height(2.dp))
-        Text(
-            text = label,
-            fontSize = 11.sp,
-            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-            color = tint,
-        )
     }
 }
 
@@ -444,9 +398,13 @@ private class SimulationUiState {
     var autoDirectionForward by mutableStateOf(true)
     var autoMode by mutableStateOf(false)
     var running by mutableStateOf(false)
+
+    /** true = sitting at [stationIndex], just arrived; false = cruising toward the next station. */
+    var arriving by mutableStateOf(true)
 }
 
-private const val SIMULATION_STEP_INTERVAL_MILLIS = 3_000L
+/** Dwell time at a station, and separately the cruise time to the next one — so a full station-to-station hop takes twice this. */
+private const val SIMULATION_STEP_INTERVAL_MILLIS = 5_000L
 
 @Composable
 private fun SimulationContent(state: SimulationUiState, bottomInset: Dp) {
@@ -456,20 +414,29 @@ private fun SimulationContent(state: SimulationUiState, bottomInset: Dp) {
 
     fun resetToStart() {
         state.stationIndex = if (state.autoDirectionForward) 0 else stations.lastIndex
+        state.arriving = true
         state.running = false
     }
 
     // Re-launches whenever `running` flips; flipping it back to false cancels this coroutine.
+    // Alternates arriving/cruising each tick, mirroring a real train's dwell-then-depart rhythm
+    // and giving the same "到站" moment the real Live Update shows, rather than jumping straight
+    // from one station's name to the next.
     LaunchedEffect(state.running) {
         if (!state.running) return@LaunchedEffect
         while (true) {
             delay(SIMULATION_STEP_INTERVAL_MILLIS)
-            val next = state.stationIndex + if (state.autoDirectionForward) 1 else -1
-            if (next !in stations.indices) {
-                state.running = false
-                break
+            if (state.arriving) {
+                val next = state.stationIndex + if (state.autoDirectionForward) 1 else -1
+                if (next !in stations.indices) {
+                    state.running = false
+                    break
+                }
+                state.arriving = false
+            } else {
+                state.stationIndex += if (state.autoDirectionForward) 1 else -1
+                state.arriving = true
             }
-            state.stationIndex = next
         }
     }
 
@@ -477,8 +444,8 @@ private fun SimulationContent(state: SimulationUiState, bottomInset: Dp) {
     // shown on screen, so 模拟 can preview it without needing a real ride. Posted under its own
     // ID (LiveUpdateNotifier.SIMULATION_NOTIFICATION_ID) so it never collides with a real one,
     // and cleared once the user leaves this tab since it's only a preview, not a real service.
-    LaunchedEffect(state.selectedLineIndex, state.stationIndex, state.autoDirectionForward) {
-        postSimulationNotification(context, line, stations, state.stationIndex, state.autoDirectionForward)
+    LaunchedEffect(state.selectedLineIndex, state.stationIndex, state.autoDirectionForward, state.arriving) {
+        postSimulationNotification(context, line, stations, state.stationIndex, state.autoDirectionForward, state.arriving)
     }
     DisposableEffect(Unit) {
         onDispose { NotificationManagerCompat.from(context).cancel(LiveUpdateNotifier.SIMULATION_NOTIFICATION_ID) }
@@ -505,11 +472,17 @@ private fun SimulationContent(state: SimulationUiState, bottomInset: Dp) {
             onSelectedIndexChange = { index ->
                 state.selectedLineIndex = index
                 state.stationIndex = 0
+                state.arriving = true
                 state.running = false
             },
         )
 
-        SimulationStatusCard(line = line, stationIndex = state.stationIndex, forward = state.autoDirectionForward)
+        SimulationStatusCard(
+            line = line,
+            stationIndex = state.stationIndex,
+            forward = state.autoDirectionForward,
+            arriving = state.arriving,
+        )
 
         SwitchPreference(
             checked = state.autoMode,
@@ -518,7 +491,7 @@ private fun SimulationContent(state: SimulationUiState, bottomInset: Dp) {
                 state.running = false
             },
             title = "自动报站",
-            summary = "每 ${SIMULATION_STEP_INTERVAL_MILLIS / 1000} 秒自动前进到下一站；关闭则手动选择",
+            summary = "每 ${SIMULATION_STEP_INTERVAL_MILLIS / 1000} 秒切换到站/发车状态；关闭则手动选择",
         )
 
         if (state.autoMode) {
@@ -563,18 +536,29 @@ private fun SimulationContent(state: SimulationUiState, bottomInset: Dp) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Button(
                     enabled = state.stationIndex > 0,
-                    onClick = { state.stationIndex-- },
+                    onClick = {
+                        state.stationIndex--
+                        state.arriving = true
+                    },
                 ) {
                     Text("上一站")
                 }
                 Button(
                     enabled = state.stationIndex < stations.lastIndex,
                     colors = ButtonDefaults.buttonColorsPrimary(),
-                    onClick = { state.stationIndex++ },
+                    onClick = {
+                        state.stationIndex++
+                        state.arriving = true
+                    },
                 ) {
                     Text("下一站")
                 }
-                Button(onClick = { state.stationIndex = 0 }) {
+                Button(
+                    onClick = {
+                        state.stationIndex = 0
+                        state.arriving = true
+                    },
+                ) {
                     Text("重置")
                 }
             }
@@ -583,40 +567,57 @@ private fun SimulationContent(state: SimulationUiState, bottomInset: Dp) {
 }
 
 @Composable
-private fun SimulationStatusCard(line: MetroLine, stationIndex: Int, forward: Boolean) {
+private fun SimulationStatusCard(line: MetroLine, stationIndex: Int, forward: Boolean, arriving: Boolean) {
     val stations = line.stations
     val current = stations[stationIndex]
     val nextIndex = stationIndex + if (forward) 1 else -1
     val next = stations.getOrNull(nextIndex)
 
     Card(modifier = Modifier.fillMaxWidth()) {
-        if (next == null) {
-            Text(
-                text = "已到达终点：${current.nameZh}",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MiuixTheme.colorScheme.primary,
-            )
-        } else {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .basicMarquee(),
-            ) {
+        when {
+            next == null -> {
                 Text(
-                    text = "当前站 ${current.nameZh}  →  下一站 ${next.nameZh}",
+                    text = "已到达终点：${current.nameZh}",
                     fontSize = 20.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = MiuixTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Clip,
+                    color = MiuixTheme.colorScheme.primary,
                 )
             }
-            Spacer(modifier = Modifier.height(8.dp))
-            LinearProgressIndicator(
-                modifier = Modifier.fillMaxWidth(),
-                progress = stationIndex.toFloat() / (stations.size - 1),
-            )
+            arriving -> {
+                Text(
+                    text = "${current.nameZh}站到了",
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MiuixTheme.colorScheme.primary,
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "下一站：${next.nameZh}",
+                    style = MiuixTheme.textStyles.paragraph,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
+            }
+            else -> {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .basicMarquee(),
+                ) {
+                    Text(
+                        text = "当前站 ${current.nameZh}  →  下一站 ${next.nameZh}",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MiuixTheme.colorScheme.onSurface,
+                        maxLines = 1,
+                        overflow = TextOverflow.Clip,
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth(),
+                    progress = stationIndex.toFloat() / (stations.size - 1),
+                )
+            }
         }
         Spacer(modifier = Modifier.height(8.dp))
         Text(
@@ -696,6 +697,7 @@ private fun postSimulationNotification(
     stations: List<Station>,
     stationIndex: Int,
     forward: Boolean,
+    arriving: Boolean,
 ) {
     if (!hasNotificationPermission(context)) return
     LiveUpdateNotifier.ensureChannel(context)
@@ -711,7 +713,7 @@ private fun postSimulationNotification(
         segmentProgressPercent = 0,
         distanceToNextMeters = null,
         offLine = false,
-        arriving = next == null,
+        arriving = next == null || arriving,
     )
     val notification = LiveUpdateNotifier.build(context, simulatedState, showStopAction = false)
     NotificationManagerCompat.from(context).notify(LiveUpdateNotifier.SIMULATION_NOTIFICATION_ID, notification)
