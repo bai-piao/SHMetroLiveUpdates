@@ -27,6 +27,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -34,20 +35,26 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.shmetro.liveupdates.data.MetroLine
 import com.shmetro.liveupdates.data.MetroLines
+import com.shmetro.liveupdates.data.Station
 import com.shmetro.liveupdates.location.StationLocator
 import com.shmetro.liveupdates.location.TrackingState
 import com.shmetro.liveupdates.location.TrackingStateHolder
+import com.shmetro.liveupdates.notification.LiveUpdateNotifier
 import com.shmetro.liveupdates.service.MetroTrackingService
 import kotlinx.coroutines.delay
 import top.yukonga.miuix.kmp.basic.BasicComponent
@@ -63,6 +70,13 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.basic.TopAppBar
+import top.yukonga.miuix.kmp.blur.BlendColorEntry
+import top.yukonga.miuix.kmp.blur.BlurDefaults
+import top.yukonga.miuix.kmp.blur.LayerBackdrop
+import top.yukonga.miuix.kmp.blur.isRuntimeShaderSupported
+import top.yukonga.miuix.kmp.blur.layerBackdrop
+import top.yukonga.miuix.kmp.blur.rememberLayerBackdrop
+import top.yukonga.miuix.kmp.blur.textureBlur
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.Location
 import top.yukonga.miuix.kmp.icon.extended.Play
@@ -122,44 +136,85 @@ private fun MetroApp() {
         permissionLauncher.launch(permissions)
     }
 
+    // Blur/glass only works where the device supports Compose's AGSL runtime shader; older
+    // GPUs fall back to a plain opaque bar (backdrop stays null, blurActive below is false).
+    val backdrop: LayerBackdrop? = if (isRuntimeShaderSupported()) {
+        val surfaceColor = MiuixTheme.colorScheme.surface
+        rememberLayerBackdrop {
+            drawRect(surfaceColor)
+            drawContent()
+        }
+    } else {
+        null
+    }
+    val blurActive = backdrop != null
+
     Scaffold(
         topBar = { TopAppBar(title = selectedTab.label) },
         bottomBar = {
-            NavigationBar {
-                NavigationBarItem(
-                    selected = selectedTab == AppTab.Live,
-                    onClick = { selectedTab = AppTab.Live },
-                    icon = MiuixIcons.Location,
-                    label = AppTab.Live.label,
-                )
-                NavigationBarItem(
-                    selected = selectedTab == AppTab.Simulate,
-                    onClick = { selectedTab = AppTab.Simulate },
-                    icon = MiuixIcons.Play,
-                    label = AppTab.Simulate.label,
-                )
-                NavigationBarItem(
-                    selected = selectedTab == AppTab.Settings,
-                    onClick = { selectedTab = AppTab.Settings },
-                    icon = MiuixIcons.Settings,
-                    label = AppTab.Settings.label,
-                )
+            Box(
+                modifier = if (blurActive) {
+                    Modifier.textureBlur(
+                        backdrop = backdrop,
+                        shape = RectangleShape,
+                        blurRadius = 25f,
+                        colors = BlurDefaults.blurColors(
+                            blendColors = listOf(
+                                BlendColorEntry(color = MiuixTheme.colorScheme.surface.copy(alpha = 0.65f)),
+                            ),
+                        ),
+                    )
+                } else {
+                    Modifier
+                },
+            ) {
+                NavigationBar(color = if (blurActive) Color.Transparent else MiuixTheme.colorScheme.surface) {
+                    NavigationBarItem(
+                        selected = selectedTab == AppTab.Live,
+                        onClick = { selectedTab = AppTab.Live },
+                        icon = MiuixIcons.Location,
+                        label = AppTab.Live.label,
+                    )
+                    NavigationBarItem(
+                        selected = selectedTab == AppTab.Simulate,
+                        onClick = { selectedTab = AppTab.Simulate },
+                        icon = MiuixIcons.Play,
+                        label = AppTab.Simulate.label,
+                    )
+                    NavigationBarItem(
+                        selected = selectedTab == AppTab.Settings,
+                        onClick = { selectedTab = AppTab.Settings },
+                        icon = MiuixIcons.Settings,
+                        label = AppTab.Settings.label,
+                    )
+                }
             }
         },
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+        // Deliberately not applying the bottom inset here: content needs to extend full-height,
+        // underneath the (semi-transparent) bar, for there to be anything for it to blur. Each
+        // tab instead reserves that space as trailing padding inside its own scroll content.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = padding.calculateTopPadding())
+                .then(if (blurActive) Modifier.layerBackdrop(backdrop) else Modifier),
+        ) {
+            val bottomInset = padding.calculateBottomPadding()
             when (selectedTab) {
                 AppTab.Live -> LiveTrackingContent(
                     state = trackingState,
+                    bottomInset = bottomInset,
                     onStartTracking = {
                         if (hasLocationPermission) startTracking(context) else requestPermissions()
                     },
                     onStopTracking = { stopTracking(context) },
                 )
-                AppTab.Simulate -> SimulationContent(simulationState)
+                AppTab.Simulate -> SimulationContent(simulationState, bottomInset = bottomInset)
                 AppTab.Settings -> SettingsContent(
                     hasNotificationPermission = hasNotificationPermission,
                     promotedNotificationsEnabled = promotedNotificationsEnabled,
+                    bottomInset = bottomInset,
                     onRequestNotificationPermission = requestPermissions,
                     onOpenPromotionSettings = {
                         val intent = Intent(Settings.ACTION_APP_NOTIFICATION_PROMOTION_SETTINGS).apply {
@@ -185,6 +240,7 @@ private fun MetroApp() {
 @Composable
 private fun LiveTrackingContent(
     state: TrackingState,
+    bottomInset: Dp,
     onStartTracking: () -> Unit,
     onStopTracking: () -> Unit,
 ) {
@@ -192,7 +248,7 @@ private fun LiveTrackingContent(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(20.dp),
+            .padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 20.dp + bottomInset),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text(
@@ -346,7 +402,8 @@ private class SimulationUiState {
 private const val SIMULATION_STEP_INTERVAL_MILLIS = 3_000L
 
 @Composable
-private fun SimulationContent(state: SimulationUiState) {
+private fun SimulationContent(state: SimulationUiState, bottomInset: Dp) {
+    val context = LocalContext.current
     val line = MetroLines.all[state.selectedLineIndex]
     val stations = line.stations
 
@@ -369,11 +426,22 @@ private fun SimulationContent(state: SimulationUiState) {
         }
     }
 
+    // Mirrors the real Live Update notification, built from the same simulated station data
+    // shown on screen, so 模拟 can preview it without needing a real ride. Posted under its own
+    // ID (LiveUpdateNotifier.SIMULATION_NOTIFICATION_ID) so it never collides with a real one,
+    // and cleared once the user leaves this tab since it's only a preview, not a real service.
+    LaunchedEffect(state.selectedLineIndex, state.stationIndex, state.autoDirectionForward) {
+        postSimulationNotification(context, line, stations, state.stationIndex, state.autoDirectionForward)
+    }
+    DisposableEffect(Unit) {
+        onDispose { NotificationManagerCompat.from(context).cancel(LiveUpdateNotifier.SIMULATION_NOTIFICATION_ID) }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(20.dp),
+            .padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 20.dp + bottomInset),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text(
@@ -516,6 +584,7 @@ private fun SimulationStatusCard(line: MetroLine, stationIndex: Int, forward: Bo
 private fun SettingsContent(
     hasNotificationPermission: Boolean,
     promotedNotificationsEnabled: Boolean,
+    bottomInset: Dp,
     onRequestNotificationPermission: () -> Unit,
     onOpenPromotionSettings: () -> Unit,
 ) {
@@ -523,7 +592,7 @@ private fun SettingsContent(
         modifier = Modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(20.dp),
+            .padding(start = 20.dp, end = 20.dp, top = 20.dp, bottom = 20.dp + bottomInset),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         if (!hasNotificationPermission && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -574,6 +643,33 @@ private fun PermissionHintCard(text: String, actionLabel: String, onClick: () ->
     }
 }
 
+private fun postSimulationNotification(
+    context: Context,
+    line: MetroLine,
+    stations: List<Station>,
+    stationIndex: Int,
+    forward: Boolean,
+) {
+    if (!hasNotificationPermission(context)) return
+    LiveUpdateNotifier.ensureChannel(context)
+    val current = stations[stationIndex]
+    val nextIndex = stationIndex + if (forward) 1 else -1
+    val next = stations.getOrNull(nextIndex)
+    val simulatedState = TrackingState(
+        isTracking = true,
+        currentLine = line,
+        currentStation = current,
+        nextStation = next ?: current,
+        directionForward = forward,
+        segmentProgressPercent = 0,
+        distanceToNextMeters = null,
+        offLine = false,
+        arriving = next == null,
+    )
+    val notification = LiveUpdateNotifier.build(context, simulatedState, showStopAction = false)
+    NotificationManagerCompat.from(context).notify(LiveUpdateNotifier.SIMULATION_NOTIFICATION_ID, notification)
+}
+
 private fun hasLocationPermission(context: Context): Boolean =
     ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
         PackageManager.PERMISSION_GRANTED
@@ -596,8 +692,6 @@ private fun startTracking(context: Context) {
 }
 
 private fun stopTracking(context: Context) {
-    val intent = Intent(context, MetroTrackingService::class.java).setAction(
-        com.shmetro.liveupdates.notification.LiveUpdateNotifier.ACTION_STOP,
-    )
+    val intent = Intent(context, MetroTrackingService::class.java).setAction(LiveUpdateNotifier.ACTION_STOP)
     context.startService(intent)
 }

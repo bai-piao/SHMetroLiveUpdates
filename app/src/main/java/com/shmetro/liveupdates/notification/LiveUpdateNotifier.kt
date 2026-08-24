@@ -29,6 +29,9 @@ import com.shmetro.liveupdates.service.MetroTrackingService
 object LiveUpdateNotifier {
     const val CHANNEL_ID = "metro_live_updates"
     const val NOTIFICATION_ID = 42
+
+    /** Separate ID for the 模拟 (simulation) tab's preview notification, so it never clobbers a real ride. */
+    const val SIMULATION_NOTIFICATION_ID = 43
     const val ACTION_STOP = "com.shmetro.liveupdates.action.STOP"
 
     fun ensureChannel(context: Context) {
@@ -46,17 +49,16 @@ object LiveUpdateNotifier {
     /** The line/current/next-station triple, only present once a line has actually been matched. */
     private data class Located(val line: MetroLine, val current: Station, val next: Station)
 
-    fun build(context: Context, state: TrackingState): android.app.Notification {
+    /**
+     * @param showStopAction Whether to add the "停止追踪" action, which targets
+     *   [MetroTrackingService]. The 模拟 (simulation) tab has no service to stop, so it passes
+     *   `false` rather than wiring up a button that would do nothing.
+     */
+    fun build(context: Context, state: TrackingState, showStopAction: Boolean = true): android.app.Notification {
         val contentIntent = PendingIntent.getActivity(
             context,
             0,
             Intent(context, MainActivity::class.java),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
-        val stopIntent = PendingIntent.getService(
-            context,
-            0,
-            Intent(context, MetroTrackingService::class.java).setAction(ACTION_STOP),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
         )
 
@@ -105,9 +107,17 @@ object LiveUpdateNotifier {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setContentIntent(contentIntent)
-            .addAction(0, context.getString(R.string.action_stop_tracking), stopIntent)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+        if (showStopAction) {
+            val stopIntent = PendingIntent.getService(
+                context,
+                0,
+                Intent(context, MetroTrackingService::class.java).setAction(ACTION_STOP),
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            )
+            builder.addAction(0, context.getString(R.string.action_stop_tracking), stopIntent)
+        }
         if (located != null) {
             builder.setColor(located.line.colorArgb)
         }
